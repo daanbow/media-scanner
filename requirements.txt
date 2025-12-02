@@ -1,0 +1,7 @@
+# Python dependencies for Media Data
+pandas
+requests
+pymediainfo
+rich
+python-dotenv
+Pillow
