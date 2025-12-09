@@ -1,11 +1,11 @@
 """
-Professional Media Library Scanner v3.5 (Production & Databricks-ready)
+Professional Media Library Scanner v1.0 (Production & Databricks-ready)
 
 - Multi-threaded scanner for large media libraries (NAS / local).
 - Rich technical metadata via MediaInfo + EXIF.
 - TMDB enrichment with safe handling of missing / weird data.
 - Multi-language-aware (PL / EN / CS / ES / DE / FR / IT).
-- Output: CSV optimized for Databricks ingestion.
+- Output: CSV optimized for Databricks ingestion (no bad rows).
 
 Author: daanbow & AI (Data Engineering Team)
 """
@@ -17,6 +17,7 @@ import time
 import math
 import logging
 import warnings
+import csv
 from typing import Any, Dict, List, Optional, Tuple, Set
 from datetime import datetime
 from pathlib import Path
@@ -70,7 +71,7 @@ except ImportError:
 class Config:
     """Production configuration."""
 
-    # Media root – możesz nadpisywać przez env: MEDIA_ROOT=E:\\MEDIA
+    # Media root – możesz nadpisywać przez env: MEDIA_ROOT=E:\\MEDIA albo \\NAS\share
     MEDIA_ROOT: str = os.getenv("MEDIA_ROOT", r"E:\MEDIA").strip()
 
     ROOT_DIRECTORIES: List[str] = [
@@ -171,6 +172,7 @@ class MediaType(Enum):
     MOVIE_EXTRA = "movie_extra"
     SERIES = "series"
     SERIES_POLISH = "series_pl"
+    SERIES_ORIGINAL = "series_original"  # NEW: dedicated type for "Series Original"
     MUSIC = "music"
     MUSIC_CLIP = "music_clip"
     DOCUMENTARY = "documentary"
@@ -460,7 +462,8 @@ class MediaTypeClassifier:
         "religious": (MediaType.RELIGIOUS, ContentLanguage.MIXED),
         "others": (MediaType.MIXED, ContentLanguage.MIXED),
         "series": (MediaType.SERIES, ContentLanguage.ENGLISH),
-        "series original": (MediaType.SERIES, ContentLanguage.ORIGINAL),
+        # NEW: separate media_type for Series Original
+        "series original": (MediaType.SERIES_ORIGINAL, ContentLanguage.ORIGINAL),
         "series polish": (MediaType.SERIES_POLISH, ContentLanguage.POLISH),
         "theater": (MediaType.THEATER, ContentLanguage.MIXED),
     }
@@ -1012,7 +1015,7 @@ class MetadataExtractor:
 class TMDBManager:
     def __init__(self) -> None:
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "MediaScanner/3.5"})
+        self.session.headers.update({"User-Agent": "MediaScanner/3.6"})
         self.last_request_time = 0.0
         self.request_count = 0
         self.error_count = 0
@@ -1055,7 +1058,13 @@ class TMDBManager:
             return record
 
         is_series = (
-            record.media_type in {MediaType.SERIES.value, MediaType.SERIES_POLISH.value, MediaType.KIDS_SERIES.value}
+            record.media_type
+            in {
+                MediaType.SERIES.value,
+                MediaType.SERIES_POLISH.value,
+                MediaType.SERIES_ORIGINAL.value,  # NEW: treat Series Original as series for TMDB
+                MediaType.KIDS_SERIES.value,
+            }
             or record.season_number is not None
         )
         endpoint = "tv" if is_series else "movie"
@@ -1221,6 +1230,24 @@ class ErrorTracker:
                 logger.error(f"Failed to write error log: {e}")
 
 
+# =================== CSV SANITIZATION (for Databricks) ===================
+
+def sanitize_dataframe_for_csv(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepare DataFrame for safe CSV export into Spark/Databricks.
+
+    - removes any newlines from *all* string columns (Spark multiLine=false),
+    - leaves None/NaN values as-is,
+    - keeps commas, but we will quote all fields on write.
+    """
+    for col in df.columns:
+        if df[col].dtype == object:
+            df[col] = df[col].apply(
+                lambda v: re.sub(r"[\r\n]+", " ", v) if isinstance(v, str) else v
+            )
+    return df
+
+
 # =================== MAIN WORKFLOW ===================
 
 def collect_files() -> List[Tuple[str, str, int, float, float]]:
@@ -1285,7 +1312,7 @@ def process_item(
 
 
 def main() -> None:
-    console.print("[bold green]Media Scanner v3.5 (multi-language, TMDB-safe)[/bold green]")
+    console.print("[bold green]Media Scanner v3.6 (multi-language, TMDB-safe)[/bold green]")
     try:
         Config.validate()
     except Exception as e:
@@ -1342,7 +1369,19 @@ def main() -> None:
         return
 
     df = pd.DataFrame(results)
-    df.to_csv(Config.CSV_FILE, index=False, encoding="utf-8-sig", escapechar="\\")
+    df = sanitize_dataframe_for_csv(df)
+
+    # CSV zapisany w trybie „max safety” – wszystkie pola w cudzysłowach,
+    # bez znaków nowej linii w żadnej kolumnie.
+    df.to_csv(
+        Config.CSV_FILE,
+        index=False,
+        encoding="utf-8-sig",
+        quoting=csv.QUOTE_ALL,
+        quotechar='"',
+        doublequote=True,
+        escapechar="\\",
+    )
 
     stats = cache.stats()
     total_gb = float(df["size_gb"].sum()) if "size_gb" in df.columns else 0.0
