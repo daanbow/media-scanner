@@ -1,0 +1,22 @@
+## Utworzenie wirtualnego środowiska
+uv venv
+
+## Aktywacja środowiska
+.venv\Scripts\activate
+
+## Instalacja zależności
+uv pip install -r requirements.txt
+
+## Plik konfiguracyjny .env
+TMDB_API_KEY=twoj_klucz_z_themoviedb_org
+MEDIA_ROOT=\\192.168.50.135\Nowy1\MEDIA (jeśli mam odpalać go zdalnie)
+
+## Uruchomienie
+python media_scanner_v1.py
+
+## Usuń folder .venv:
+Remove-Item -Recurse -Force .venv
+
+Stwórz je na nowo (teraz, gdy jesteś już w folderze o nowej nazwie):
+uv venv
+uv pip install -r requirements.txt

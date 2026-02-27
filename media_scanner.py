@@ -72,7 +72,7 @@ class Config:
     """Production configuration."""
 
     # Media root – możesz nadpisywać przez env: MEDIA_ROOT=E:\\MEDIA albo \\NAS\share
-    MEDIA_ROOT: str = os.getenv("MEDIA_ROOT", r"E:\MEDIA").strip()
+    MEDIA_ROOT: str = os.getenv("MEDIA_ROOT", r"F:\MEDIA").strip()
 
     ROOT_DIRECTORIES: List[str] = [
         os.path.join(MEDIA_ROOT, "Christmas"),
@@ -93,6 +93,7 @@ class Config:
         os.path.join(MEDIA_ROOT, "Series Original"),
         os.path.join(MEDIA_ROOT, "Series Polish"),
         os.path.join(MEDIA_ROOT, "Theater"),
+        os.path.join(MEDIA_ROOT, "Tato"),
     ]
 
     ALLOWED_EXTENSIONS: Set[str] = {
@@ -185,6 +186,7 @@ class MediaType(Enum):
     PHOTOGRAPHY = "photography"
     FUN = "fun"
     MIXED = "mixed"
+    TATO = "movie"
     UNKNOWN = "unknown"
 
 
@@ -466,6 +468,8 @@ class MediaTypeClassifier:
         "series original": (MediaType.SERIES_ORIGINAL, ContentLanguage.ORIGINAL),
         "series polish": (MediaType.SERIES_POLISH, ContentLanguage.POLISH),
         "theater": (MediaType.THEATER, ContentLanguage.MIXED),
+        "tato": (MediaType.MOVIE, ContentLanguage.ENGLISH),
+        
     }
 
     @classmethod
